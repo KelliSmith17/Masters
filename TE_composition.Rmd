@@ -1,0 +1,102 @@
+---
+title: "TE_composition"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ape)
+library(repeatR)
+library(tidyverse)
+library(ggplot2)
+library(cowplot)
+
+source("workflow_functions2.R")
+```
+
+```{r}
+## reading in .out files. 
+Ecl_out <- read_rm_new(RMout_path("Ecl"))
+Ety_out <- read_rm_new(RMout_path("Ety"))
+Epo_out <- read_rm_new(RMout_path("Epo"))
+mega_rm_df <- rbind.data.frame(Ecl_out, Ety_out, Epo_out)
+mega_rm_df <- group_all_tclass(mega_rm_df)
+#this code will create a new column called "group." Group refers to tclass where all .inc and ? 
+are included in their parent class.
+#unique(mega_rm_df$group)
+```
+
+## Aggregating .out dataset to account for nesting
+
+this ensures TEs that are fragmented across several entries are not over-represented in TE counts. 
+
+```{r}
+# to account for nesting
+rm_df_aggregated <- summarise_rm_ID(mega_rm_df)
+head(rm_df_aggregated)
+#few things need to be done here: lineage column and group column need to be readded. tlen negative values need to be fixed. 
+
+#fixing negative values
+rm_df_aggregated$tlen <- ifelse(rm_df_aggregated$tlen < 0, rm_df_aggregated$tlen*-1, rm_df_aggregated$tlen)
+
+#readding lineage column 
+rm_df_aggregated$lineage <- str_extract(rm_df_aggregated$qname, "[[:alpha:]]+")
+
+#readd group
+rm_df_aggregated <- group_all_tclass(rm_df_aggregated)
+head(rm_df_aggregated)
+
+#rename Epo from Etp
+rm_df_aggregated$lineage <- str_replace(rm_df_aggregated$lineage, "Etp", "Epo")
+
+```
+
+
+
+# Copy number and Length
+
+```{r}
+all_len_p <- class_len_plot_all(rm_df_aggregated) + xlab("")
+```
+
+```{r}
+all_freq_p <- class_freq_plot_all(rm_df_aggregated)
+```
+
+```{r}
+ggdraw() +
+  draw_plot(all_freq_p  + theme(legend.position = "none") + xlab("") , x = 0.0, y = 0.525, height = 0.45, width = 0.975) +
+  draw_plot(all_len_p + theme(legend.position = "bottom"), x = 0.0, y = 0, height = 0.5, width = 0.975) +
+  draw_plot_label(label = c("A", "B"), size = 20,
+                  x = c(0, 0), y = c(1, 0.5))
+```
+# Dating
+
+```{r}
+psub_p <- psub_plot(rm_df_aggregated)
+```
+
+```{r}
+#specific classes may be subset like this
+psub_p_LTR <- psub_plot(subset(rm_df_aggregated, group == c("LTR/Copia",
+                 "LTR/Gypsy", "LTR")))
+```
+# To look at frequency of individual TE classes:
+
+```{r}
+copias <- subset(rm_df_aggregated, tclass == "LTR/Copia")
+copias <- copias %>% group_by(lineage) %>% count(tname)
+copias <- copias %>% arrange(lineage, desc(n))
+copia_bars <- ggplot(copias, aes(x = tname, y = n, fill = lineage)) +
+  geom_col(position = "stack") + scale_fill_manual(values = lineage_cols) +
+    theme(axis.text.x = element_blank(),
+        axis.text.y = element_text(size = 18),
+        axis.title = element_text(size = 18),
+        legend.text = element_text(size = 18),
+        legend.title = element_blank()) +
+  ylab("Copy number") + xlab("Unique LTR/Copia sequences")
+copia_bars
+```

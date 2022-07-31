@@ -1,0 +1,27 @@
+---
+title: "Chapter3_Synteny"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(pafr)
+library(tidyverse)
+library(ggplot2)
+```
+
+paf files were generated for each genome in minimap2 using -x -asm20
+
+# load in paf to visualise
+```{r}
+Ecl_vs_Ety <- read_paf("Synteny/Ecl_vs_Ety.paf")
+plot_coverage(Ecl_vs_Ety, fill = "qname")
+```
+
+#synteny between single chromosomes
+```{r}
+plot_synteny(Ecl_vs_Ety, q_chrom = "Ety chrom. 2", t_chrom = "Ecl chrom. 2")
+```

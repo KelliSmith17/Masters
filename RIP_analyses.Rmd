@@ -64,7 +64,7 @@ ggplot(Ecl_idx, aes(x = p_sub, y = RIP_idx_2, color = group)) + geom_point() + y
 ```
 
 
-# RIP by compartment (using bedtools intersect files for AT/TE and GC/TE localisation
+# RIP by compartment (using bedtools intersect files for AT/TE and GC/TE localisation)
 
 ```{r}
 compartment_TEs <- rbind.data.frame(read.table(AT_TE_path("Ecl")), read.table(GC_TE_path("Ecl")))
@@ -83,7 +83,7 @@ ggplot(out_idx_comp, aes(x = RIP_idx_2, fill = group)) +
   facet_grid(compartment ~ . )
 ```
 
-code above can be filtered by desired length using
+dataframe above can be filtered by desired length using
 out_idx_comp <- filter(out_idx_comp, len > [length here])
 
 

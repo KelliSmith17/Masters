@@ -1,0 +1,140 @@
+---
+title: "AT_richness"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ape)
+library(tidyverse)
+library(ggplot2)
+source("workflow_functions2.R")
+```
+
+# Load in AT-rich occultercut files
+
+The following function uses the OcculterCut output file alongside the reference genome to determine the proportion, length, 
+and number of AT rich blocks within the genome
+
+# for AT percentages
+```{r}
+Ecl_AT <- AT_rich(AT_path(spp = "Ecl"), ref_path_Ecl())
+Ety_AT <- AT_rich(AT_path(spp = "Ety"), ref_path_Ety())
+Epo_AT <- AT_rich(AT_path(spp = "Epo"), ref_path_Epo())
+
+x <- rbind.data.frame(Ecl_AT, Ety_AT, Epo_AT)
+x <- x[,c(1,2,3,4,6)]
+x$ref_length <- round(x$ref_length/1e6,2)
+x$AT_bp <- round(x$AT_bp/1e6,2)
+x 
+```
+
+genome coordinates from the OcculterCut .gff output can be used to extract the genomic sequences of each AT or GC block 
+from the reference genome as below:
+```{bash}
+bedtools getfasta -fi [reference genome] -fo [output name] -bed [AT.gff]
+```
+
+having retrieved the genome sequences, the file generated above was run through a custom python script as below. 
+This script calculates the dinucleotide frequences of each block, and creates two output files: dinucleotide frequencies, and RIP indices
+```{bash}
+python AT_RIP_IDX.py --seqs [fasta file from above] --outestem [output name]
+```
+
+This process was repeated for OcculterCut GC output, and analysed as below. The output provides AT and GC percentages per AT or GC block
+
+```{r}
+AT_GC_nucleotides <- function(nucs.tsv){
+  df <- read.table(nucs.tsv)
+  df$component <- ifelse(df$V1 == "A" |
+                           df$V1 == "T",
+                         "AT", "GC")
+  df %>% group_by(V4, component) %>% 
+    summarise(n = sum(V2),
+              perc = sum(V3))
+}
+
+# read in dinucleotide frequencies
+Ecl_AT_nucs <- AT_GC_nucleotides("Ecl/AT_rich/Ecl_nucs.tsv")
+Ecl_GC_nucs <- AT_GC_nucleotides("Ecl/GC_rich/GC_nucs.tsv")
+Ecl_nucs <- rbind.data.frame(Ecl_AT_nucs, Ecl_GC_nucs)
+
+ggplot(Ecl_AT_nucs, aes(x = perc, fill = component)) + geom_histogram(color = "black") +
+  theme_grey(base_size = 18) +
+  scale_fill_manual("Composition", values = c("#af8dc3", "#7fbf7b")) + theme(legend.position = "none") + 
+  xlab("Region %") + ylab("AT-rich regions")
+
+```
+
+
+
+# Mean RIP of AT rich tracts
+
+```{r}
+# import RIP indices
+Ecl_idx <- read.table(AT_RIP_path(spp = "Ecl"), header = TRUE)
+Ecl_GC_idx <- read.table("Ecl/RIP_files/Ecl_GC_indices.tsv", header = TRUE)
+```
+
+```{r}
+mean(Ecl_idx$RIP_idx_2)
+```
+
+```{r}
+mean(Ecl_GC_idx$RIP_idx_2)
+```
+
+# Ideograms
+
+Chromosome lengths were obtained using a custom python script
+```{bash eval = FALSE}
+python chrom_lens.py --seqs [reference genome] --outstem [output]
+```
+
+RIP indices across the genome were obtained using bedtools windows on the reference genome to splice the genome in 1kb blocks. 
+The coordinates of the output file were run through bedtools getfasta to retrieve genomic sequences, then rerun through the RIP python script.  
+The following function will create the AT RIP ideograms
+
+```{r}
+AT_RIP_ideogram_Ecl <- function(chrom_lens, AT, RIPwd){
+  #chrom_lens <- rename(chrom_lens, len = Length)
+  chrom_lens <- filter(chrom_lens, chrom != "Ecl_1605_22_m")
+  AT <- filter(AT, chrom != "Ecl_1605_22_m")
+  RIPwd <- filter(RIPwd, chrom != "Ecl_1605_22_m")
+  
+  chrom_lens$chrom <- str_replace(chrom_lens$chrom, "Ecl_1605_22_", "Ecl chromosome ")
+  AT$chrom <- str_replace(AT$chrom, "Ecl_1605_22_", "Ecl chromosome ")
+  RIPwd$chrom <- str_replace(RIPwd$chrom, "Ecl_1605_22_", "Ecl chromosome ")
+  ggplot() + geom_rect(data = chrom_lens, aes(xmin=0, xmax=len, ymin=0, ymax=2), colour="black", fill="white") + 
+    geom_rect(data = chrom_lens, aes(xmin=0, xmax=len-0, ymin=0, ymax=2), fill="#99d8c9") + 
+    geom_rect(data = AT, aes(xmin = start, xmax = end, ymin = 0,
+                             ymax = 2), fill = "#d2bfdd") +    
+  
+    facet_wrap( ~chrom, ncol = 1) + ylim(0,2) +
+    scale_x_continuous("Position in genome (Mb)", label=function(x) x/1e6) + 
+    scale_y_continuous(limits=c(-1,2)) +
+    theme_minimal() +
+    theme(panel.spacing = unit(1, "pt"),
+          panel.grid = element_blank(),
+          axis.title.y = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y  = element_blank(),
+    ) +
+    geom_line(RIPwd, mapping = aes(end, RIP_idx_2), size = 0.1)
+}
+```
+
+To run:
+```{r}
+Ecl_chrom_len <- read.table(chrom_lens_path("Ecl"), header = TRUE)
+Ecl_chrom_len <- rename(Ecl_chrom_len, chrom = Chromosome, len = Length)
+AT_coords_Ecl <- AT_coords(AT_path("Ecl"))
+Ecl_RIP_wd <- RIP_window("Ecl/references/1kb_windows/Ecl_1kb_indices.tsv", "Ecl/references/1kb_windows/Ecl_1kb.bed")
+Ecl_AT_RIP_ideogram <- AT_RIP_ideogram_Ecl(Ecl_chrom_len, AT_coords_Ecl, Ecl_RIP_wd)
+Ecl_AT_RIP_ideogram
+```
+
+

@@ -1,0 +1,89 @@
+---
+title: "Thesis_RIP"
+output: pdf_document
+---
+
+```{r}
+library(repeatR)
+library(ggplot2)
+library(ggridges)
+library(tidyverse)
+```
+
+RepeatMasker .out files were converted and saved as .bed files
+```{r eval = FALSE}
+Ecl_bed <- rm_to_bed(Ecl_out)
+write_bed(Ecl_bed, "Ecl/repeat_beds/Ecl_out.bed")
+```
+
+usage: 
+
+bedtools getfasta -fi references/reference_genome/Ecl1605_22_Epichloe_clarkii_1605_22_45692596_v2.fna -bed 
+repeat_beds/out.bed/Ecl_out.bed -fo repeat_fasta/Ecl_out.bed.fna
+
+python3 ../python/AT_RIP_IDX.py --seqs repeat_fasta/Ecl_out.bed.fna --outstem RIP_files/Ecl_out_RIP
+
+indices are in order of outfile. This data can be remerged with the original outfile.
+
+```{r}
+Ecl_out <- read_rm_new(RMout_path("Ecl"))
+Ecl_idx <- read.table("Ecl/RIP_files/Ecl_out_RIP_indices.tsv", header = T)
+#Rip indices are in order of .out file and can be bound.
+Ecl_idx <- cbind.data.frame(Ecl_out, Ecl_idx)
+Ecl_idx <- group_all_tclass(Ecl_idx)
+head(Ecl_idx)
+```
+# Density plot of RIP index values:
+
+```{r}
+ggplot(Ecl_idx, aes(x = RIP_idx_2, y = reorder(group, desc(group)), fill = group)) + 
+  geom_density_ridges(scale = 3, alpha = 0.75) + xlim(0,2) + geom_vline(xintercept = 0.9) + 
+  scale_fill_manual(values = TE_cols) +  theme(legend.position = "none") +
+  xlab("RIP index") + ylab("")
+```
+
+# RIP by length
+
+```{r}
+Ecl_idx$len <- Ecl_idx$tend - Ecl_idx$tstart
+Ecl_idx$len <- ifelse(Ecl_idx$len < 0,
+                      Ecl_idx$len *-1,
+                      Ecl_idx$len)
+Ecl_idx$order <- sapply(str_split(Ecl_idx$group, "/"), "[[",1)
+
+ggplot(Ecl_idx, aes(x = log(len), y = RIP_idx_2, color = group)) + geom_point() + ylim(0, 2.5) +
+  geom_vline(xintercept = log(400)) + geom_hline(yintercept = 0.9) + scale_color_manual(values = TE_cols) + 
+  theme(legend.position = "bottom") +   facet_grid(order ~ .)
+```
+
+# RIP by consensus divergence
+```{r}
+ggplot(Ecl_idx, aes(x = p_sub, y = RIP_idx_2, color = group)) + geom_point() + ylim(0, 2.5) +
+  geom_hline(yintercept = 0.9) + scale_color_manual(values = TE_cols) + theme(legend.position = "bottom") +
+  facet_grid(order ~ .)
+```
+
+
+# RIP by compartment (using bedtools intersect files for AT/TE and GC/TE localisation
+
+```{r}
+compartment_TEs <- rbind.data.frame(read.table(AT_TE_path("Ecl")), read.table(GC_TE_path("Ecl")))
+compartment_TEs <- compartment_TEs[, c(1, 3, 11, 12, 13)]
+compartment_TEs <- compartment_TEs %>% rename(
+  "qname" = V1, "compartment" = V3, "qstart" = V11, "qend" = V12, "tname" = V13, 
+)
+compartment_TEs$qstart <- compartment_TEs$qstart + 1 # to match out.data 
+out_idx_comp <- inner_join(Ecl_idx, compartment_TEs)
+
+ggplot(out_idx_comp, aes(x = RIP_idx_2, fill = group)) +
+  geom_histogram() + xlim(0,2.5) +
+  theme(legend.position = "bottom") +
+  scale_fill_manual(values = TE_cols) +
+  geom_vline(xintercept = 0.9) + 
+  facet_grid(compartment ~ . )
+```
+
+code above can be filtered by desired length using
+out_idx_comp <- filter(out_idx_comp, len > [length here])
+
+

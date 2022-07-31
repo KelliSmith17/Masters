@@ -1,0 +1,86 @@
+```{r}
+library(repeatR)
+library(tidyverse)
+library(ape)
+library(ggplot2)
+library(cowplot)
+```
+
+# Effector significance example
+
+# create bed files from RepeatMasker out file
+
+# Ecl
+```{r}
+Ecl_out <- read_rm_new(RMout_path("Ecl"))
+Ecl_out <- group_all_tclass(Ecl_out)
+
+ecl.bed <- rm_to_bed(Ecl_out)
+write_bed(ecl.bed, "Ecl/repeat_beds/Ecl_out.bed")
+```
+
+use bedtools closest to obtain closest distances for every TE and its closest downstream gene
+
+load in bed bedtools output file and make appropriate column name changes for easy handling
+
+```{r}
+Ecl_BT <- read.table("Ecl/results/BEDTOOLS_closest/final/Ecl_a-rep_b-gene_-d-Dref-iu.gff3")
+Ecl_BT$V15 <- str_replace(Ecl_BT$V15, "ID=[[:alnum:]]+_", "")
+Ecl_BT$V15 <- str_replace(Ecl_BT$V15, ";", "") 
+Ecl_BT <- Ecl_BT %>% rename(seqid = V1, start = V2, end = V3,
+                tname = V4, gene_id = V15, 
+                start.b = V10, end.b = V11, 
+                distance = V16)
+```
+
+Load in effectors and SM
+
+```{r}
+Ecl_effectors <- read_effector_P(effector_path("Ecl"))
+Ecl_effectors <- filter(Ecl_effectors, prediction == "Effector")
+Ecl_effectors <- Ecl_effectors[,c(1,2)]
+Ecl_SM <- read_SM(SM_path("Ecl"))
+Ecl_SM$prediction <- "Sec.Metab"
+Ecl_sp <- rbind.data.frame(Ecl_effectors, Ecl_SM)
+Ecl_sp
+```
+Make full gene df
+
+```{r}
+full_join(Ecl_BT , Ecl_sp)
+#replace NAs with "control." Anything that isn't an effector or SM is NA
+
+Ecl_BT_bygene$prediction[is.na(Ecl_BT_bygene$prediction)] <- "Control"
+```
+one_rep <- function(n){
+  df <- Ecl_BT %>% filter(prediction == "Control")
+  df <- df[sample(nrow(df), 128),] #size match to 128 effectors
+  df1kb <- df %>% filter(distance <= 1000) # get only within 1kb upstream
+  group_counts1kb <- df1kb %>%  group_by(prediction) %>% 
+    count(group) %>% arrange(group)
+  group_counts1kb$rep <- n
+  filter(group_counts1kb, prediction =="Control")
+}
+
+library(parallel)
+null_distr <- bind_rows(mclapply(1:1000, one_rep, mc.cores=1))
+null_summ <- summarise(group_by(null_distr, group), lower=quantile(n, c(0.025)), upper=quantile(n, 0.975), median=quantile(n,0.5))
+
+#effectors only
+Ecl_BT_effectors <- filter(Ecl_BT, prediction == "Effector")
+Ecl_eff_1kb <- Ecl_BT_effectors %>% filter(distance <= 1000)
+Ecl_eff1_counts1kb <- Ecl_eff_1kb %>% group_by(prediction) %>% 
+    count(group) %>% arrange(group)
+#this line does the same as above.
+observed <- select(ungroup(filter(Ecl_eff1_counts1kb, prediction =='Effector')), group,n)
+
+result <- full_join(null_summ, observed)
+result <- tidyr::replace_na(result,list(lower=0, upper=0, median=0, n=0))
+result
+```
+```{r}
+ggplot(result, aes(x=group, y=n)) + geom_col(fill="steelblue") + geom_pointrange(aes(ymin=lower, ymax=upper, y=median),) + coord_flip()
+```
+
+
+

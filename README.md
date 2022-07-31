@@ -1,4 +1,4 @@
-# The role of Transposable Elements in the genome evolution of fungal endophytes
+# The role of transposable elements in the evolution of fungal endophyte genomes
 
 ## Kelli Smith Masters Thesis 2022
 
